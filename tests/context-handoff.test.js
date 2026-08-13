@@ -52,15 +52,29 @@ function run(overrides = {}, env = {}) {
 test('达到实际阈值时只续发一次交接提示', () => {
   const first = run();
   assert.equal(first.decision, 'block');
+  assert.equal(first.systemMessage, '上下文 810 / 1.0K（81.0%）｜交接线 800｜距交接 0｜准备交接');
   assert.match(first.reason, /810 输入 token/);
   assert.match(first.reason, /交接文档\.md/);
-  assert.deepEqual(run(), {});
+  assert.equal(run().decision, undefined);
 });
 
-test('Stop 续发轮、低于阈值和无遥测时均放行', () => {
-  assert.deepEqual(run({ stop_hook_active: true }), {});
-  assert.deepEqual(run({ session_id: 'low' }, { CONTEXT_HANDOFF_MAX_CONTEXT_PERCENT: '90' }), {});
+test('每轮结束显示 token 状态但不额外续发', () => {
+  const active = run({ stop_hook_active: true });
+  assert.equal(active.decision, undefined);
+  assert.match(active.systemMessage, /准备交接/);
+  const low = run({ session_id: 'low' }, { CONTEXT_HANDOFF_MAX_CONTEXT_PERCENT: '90' });
+  assert.equal(low.decision, undefined);
+  assert.equal(low.systemMessage, '上下文 810 / 1.0K（81.0%）｜交接线 900｜距交接 90｜注意');
   assert.deepEqual(run({ session_id: 'missing', transcript_path: path.join(temp, 'missing') }), {});
+});
+
+test('可以关闭每轮 token 状态但保留阈值交接', () => {
+  const output = run(
+    { session_id: 'status-off' },
+    { CONTEXT_HANDOFF_SHOW_TOKEN_STATUS: 'false' },
+  );
+  assert.equal(output.systemMessage, undefined);
+  assert.equal(output.decision, 'block');
 });
 
 test('自动模式只请求客户端原生新任务能力并保留手动回退', () => {

@@ -8,6 +8,7 @@ const path = require('node:path');
 const DEFAULTS = Object.freeze({
   thresholdTokens: 250000,
   maxContextPercent: 85,
+  showTokenStatus: true,
   newTaskMode: 'manual',
   handoffFile: '交接文档.md',
 });
@@ -15,6 +16,15 @@ const DEFAULTS = Object.freeze({
 function positiveNumber(value, fallback, max = Number.MAX_SAFE_INTEGER) {
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed > 0 && parsed <= max ? parsed : fallback;
+}
+
+function booleanValue(value, fallback) {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'string') {
+    if (value.toLowerCase() === 'true') return true;
+    if (value.toLowerCase() === 'false') return false;
+  }
+  return fallback;
 }
 
 function safeHandoffFile(value) {
@@ -50,9 +60,32 @@ function readConfig(env = process.env) {
   return {
     thresholdTokens,
     maxContextPercent,
+    showTokenStatus: booleanValue(
+      env.CONTEXT_HANDOFF_SHOW_TOKEN_STATUS ?? fileConfig.showTokenStatus,
+      DEFAULTS.showTokenStatus,
+    ),
     newTaskMode,
     handoffFile: safeHandoffFile(env.CONTEXT_HANDOFF_FILE ?? fileConfig.handoffFile),
   };
+}
+
+function formatTokens(value) {
+  if (value < 1000) return String(Math.round(value));
+  return `${(value / 1000).toFixed(1)}K`;
+}
+
+function buildStatus(usage, threshold) {
+  const percent = usage.contextWindow
+    ? usage.inputTokens / usage.contextWindow * 100
+    : null;
+  const remaining = Math.max(0, threshold - usage.inputTokens);
+  const state = usage.inputTokens >= threshold || percent !== null && percent >= 85
+    ? '准备交接'
+    : percent !== null && percent >= 70 ? '注意' : '安全';
+  const window = usage.contextWindow
+    ? ` / ${formatTokens(usage.contextWindow)}（${percent.toFixed(1)}%）`
+    : '';
+  return `上下文 ${formatTokens(usage.inputTokens)}${window}｜交接线 ${formatTokens(threshold)}｜距交接 ${formatTokens(remaining)}｜${state}`;
 }
 
 function readTail(filePath, maxBytes = 4 * 1024 * 1024) {
@@ -143,14 +176,16 @@ function buildReason(input, config, usage, threshold) {
 }
 
 function evaluate(input, env = process.env) {
-  if (input?.hook_event_name !== 'Stop' || input?.stop_hook_active === true) return {};
+  if (input?.hook_event_name !== 'Stop') return {};
   const config = readConfig(env);
   const usage = latestUsage(input.transcript_path);
   if (!usage) return {};
   const threshold = effectiveThreshold(config, usage);
-  if (usage.inputTokens < threshold) return {};
-  if (!claimSession(input.session_id, env)) return {};
+  const output = config.showTokenStatus ? { systemMessage: buildStatus(usage, threshold) } : {};
+  if (input.stop_hook_active === true || usage.inputTokens < threshold) return output;
+  if (!claimSession(input.session_id, env)) return output;
   return {
+    ...output,
     decision: 'block',
     reason: buildReason(input, config, usage, threshold),
   };
@@ -171,6 +206,7 @@ if (require.main === module) main();
 
 module.exports = {
   DEFAULTS,
+  buildStatus,
   buildReason,
   effectiveThreshold,
   evaluate,

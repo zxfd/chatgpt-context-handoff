@@ -1,6 +1,6 @@
 {
   "name": "chatgpt-context-handoff",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Create a handoff before a ChatGPT/Codex desktop task outgrows its context budget.",
   "author": {
     "name": "gin",
@@ -13,7 +13,7 @@
   "interface": {
     "displayName": "Context Handoff",
     "shortDescription": "Hand off long desktop tasks before context costs grow.",
-    "longDescription": "Monitors native ChatGPT/Codex task telemetry at Stop and requests one concise handoff when a configurable context threshold is reached.",
+    "longDescription": "Shows native context usage after each turn and requests one concise handoff when a configurable threshold is reached.",
     "developerName": "gin",
     "category": "Productivity",
     "capabilities": ["Lifecycle hooks", "Context monitoring"],
