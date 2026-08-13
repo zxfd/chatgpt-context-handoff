@@ -9,6 +9,7 @@ const DEFAULTS = Object.freeze({
   thresholdTokens: 250000,
   maxContextPercent: 85,
   showTokenStatus: true,
+  showCumulativeCache: false,
   newTaskMode: 'manual',
   handoffFile: '交接文档.md',
 });
@@ -64,6 +65,10 @@ function readConfig(env = process.env) {
       env.CONTEXT_HANDOFF_SHOW_TOKEN_STATUS ?? fileConfig.showTokenStatus,
       DEFAULTS.showTokenStatus,
     ),
+    showCumulativeCache: booleanValue(
+      env.CONTEXT_HANDOFF_SHOW_CUMULATIVE_CACHE ?? fileConfig.showCumulativeCache,
+      DEFAULTS.showCumulativeCache,
+    ),
     newTaskMode,
     handoffFile: safeHandoffFile(env.CONTEXT_HANDOFF_FILE ?? fileConfig.handoffFile),
   };
@@ -74,7 +79,18 @@ function formatTokens(value) {
   return `${(value / 1000).toFixed(1)}K`;
 }
 
-function buildStatus(usage, threshold) {
+function cacheCoverage(cachedTokens, inputTokens) {
+  if (!Number.isFinite(cachedTokens) || !Number.isFinite(inputTokens) || inputTokens <= 0) return null;
+  return Math.max(0, Math.min(100, cachedTokens * 100 / inputTokens));
+}
+
+function optionalNumber(value) {
+  if (value === null || value === undefined || value === '') return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function buildStatus(config, usage, threshold) {
   const percent = usage.contextWindow
     ? usage.inputTokens / usage.contextWindow * 100
     : null;
@@ -85,7 +101,15 @@ function buildStatus(usage, threshold) {
   const window = usage.contextWindow
     ? ` / ${formatTokens(usage.contextWindow)}（${percent.toFixed(1)}%）`
     : '';
-  return `上下文 ${formatTokens(usage.inputTokens)}${window}｜交接线 ${formatTokens(threshold)}｜距交接 ${formatTokens(remaining)}｜${state}`;
+  const currentCoverage = cacheCoverage(usage.cachedInputTokens, usage.inputTokens);
+  const currentCache = currentCoverage === null
+    ? '缓存 本轮不可用'
+    : `缓存 本轮 ${currentCoverage.toFixed(1)}%（${formatTokens(usage.cachedInputTokens)}）`;
+  const cumulativeCoverage = cacheCoverage(usage.cumulativeCachedInputTokens, usage.cumulativeInputTokens);
+  const cumulativeCache = config.showCumulativeCache
+    ? `｜累计 ${cumulativeCoverage === null ? '不可用' : `${cumulativeCoverage.toFixed(1)}%（${formatTokens(usage.cumulativeCachedInputTokens)}）`}`
+    : '';
+  return `上下文 ${formatTokens(usage.inputTokens)}${window}｜${currentCache}${cumulativeCache}｜交接线 ${formatTokens(threshold)}｜距交接 ${formatTokens(remaining)}｜${state}`;
 }
 
 function readTail(filePath, maxBytes = 4 * 1024 * 1024) {
@@ -117,10 +141,19 @@ function latestUsage(transcriptPath) {
       const input = Number(info?.last_token_usage?.input_tokens);
       const total = Number(info?.last_token_usage?.total_tokens);
       const inputTokens = input > 0 ? input : total;
+      const cachedInputTokens = optionalNumber(info?.last_token_usage?.cached_input_tokens);
+      const cumulativeInputTokens = optionalNumber(info?.total_token_usage?.input_tokens);
+      const cumulativeCachedInputTokens = optionalNumber(info?.total_token_usage?.cached_input_tokens);
       const contextWindow = Number(info?.model_context_window);
       if (!Number.isFinite(inputTokens) || inputTokens <= 0) continue;
       return {
         inputTokens,
+        cachedInputTokens: Number.isFinite(cachedInputTokens) && cachedInputTokens >= 0
+          ? cachedInputTokens : null,
+        cumulativeInputTokens: Number.isFinite(cumulativeInputTokens) && cumulativeInputTokens > 0
+          ? cumulativeInputTokens : null,
+        cumulativeCachedInputTokens: Number.isFinite(cumulativeCachedInputTokens) && cumulativeCachedInputTokens >= 0
+          ? cumulativeCachedInputTokens : null,
         contextWindow: Number.isFinite(contextWindow) && contextWindow > 0 ? contextWindow : null,
       };
     } catch (_) {
@@ -181,7 +214,7 @@ function evaluate(input, env = process.env) {
   const usage = latestUsage(input.transcript_path);
   if (!usage) return {};
   const threshold = effectiveThreshold(config, usage);
-  const output = config.showTokenStatus ? { systemMessage: buildStatus(usage, threshold) } : {};
+  const output = config.showTokenStatus ? { systemMessage: buildStatus(config, usage, threshold) } : {};
   if (input.stop_hook_active === true || usage.inputTokens < threshold) return output;
   if (!claimSession(input.session_id, env)) return output;
   return {

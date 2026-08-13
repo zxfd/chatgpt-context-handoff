@@ -1,6 +1,6 @@
 {
   "name": "chatgpt-context-handoff",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Create a handoff before a ChatGPT/Codex desktop task outgrows its context budget.",
   "author": {
     "name": "gin",

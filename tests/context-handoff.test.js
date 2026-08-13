@@ -18,7 +18,8 @@ beforeEach(() => {
   fs.rmSync(stateDir, { recursive: true, force: true });
   fs.writeFileSync(transcript, [
     JSON.stringify({ type: 'event_msg', payload: { type: 'token_count', info: {
-      last_token_usage: { input_tokens: 810, total_tokens: 900 },
+      last_token_usage: { input_tokens: 810, cached_input_tokens: 648, total_tokens: 900 },
+      total_token_usage: { input_tokens: 2000, cached_input_tokens: 1500 },
       model_context_window: 1000,
     } } }),
     JSON.stringify({ type: 'response_item', payload: { text: 'later line' } }),
@@ -52,7 +53,7 @@ function run(overrides = {}, env = {}) {
 test('达到实际阈值时只续发一次交接提示', () => {
   const first = run();
   assert.equal(first.decision, 'block');
-  assert.equal(first.systemMessage, '上下文 810 / 1.0K（81.0%）｜交接线 800｜距交接 0｜准备交接');
+  assert.equal(first.systemMessage, '上下文 810 / 1.0K（81.0%）｜缓存 本轮 80.0%（648）｜交接线 800｜距交接 0｜准备交接');
   assert.match(first.reason, /810 输入 token/);
   assert.match(first.reason, /交接文档\.md/);
   assert.equal(run().decision, undefined);
@@ -64,8 +65,35 @@ test('每轮结束显示 token 状态但不额外续发', () => {
   assert.match(active.systemMessage, /准备交接/);
   const low = run({ session_id: 'low' }, { CONTEXT_HANDOFF_MAX_CONTEXT_PERCENT: '90' });
   assert.equal(low.decision, undefined);
-  assert.equal(low.systemMessage, '上下文 810 / 1.0K（81.0%）｜交接线 900｜距交接 90｜注意');
+  assert.equal(low.systemMessage, '上下文 810 / 1.0K（81.0%）｜缓存 本轮 80.0%（648）｜交接线 900｜距交接 90｜注意');
   assert.deepEqual(run({ session_id: 'missing', transcript_path: path.join(temp, 'missing') }), {});
+});
+
+test('累计缓存覆盖率默认隐藏且可选显示', () => {
+  const defaultOutput = run({ session_id: 'cache-default', stop_hook_active: true });
+  assert.doesNotMatch(defaultOutput.systemMessage, /累计/);
+  const cumulative = run(
+    { session_id: 'cache-cumulative', stop_hook_active: true },
+    { CONTEXT_HANDOFF_SHOW_CUMULATIVE_CACHE: 'true' },
+  );
+  assert.match(cumulative.systemMessage, /累计 75\.0%（1\.5K）/);
+});
+
+test('API 未回传缓存字段时明确显示不可用', () => {
+  fs.writeFileSync(transcript, JSON.stringify({
+    type: 'event_msg',
+    payload: { type: 'token_count', info: {
+      last_token_usage: { input_tokens: 810, cached_input_tokens: null, total_tokens: 900 },
+      total_token_usage: { input_tokens: 2000, cached_input_tokens: null },
+      model_context_window: 1000,
+    } },
+  }));
+  const output = run(
+    { session_id: 'cache-missing', stop_hook_active: true },
+    { CONTEXT_HANDOFF_SHOW_CUMULATIVE_CACHE: 'true' },
+  );
+  assert.match(output.systemMessage, /缓存 本轮不可用/);
+  assert.match(output.systemMessage, /累计 不可用/);
 });
 
 test('可以关闭每轮 token 状态但保留阈值交接', () => {
