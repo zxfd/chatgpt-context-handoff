@@ -1,0 +1,13 @@
+{
+  "name": "chatgpt-context-handoff",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Native Stop hook for context-aware ChatGPT/Codex desktop handoffs.",
+  "license": "MIT",
+  "scripts": {
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

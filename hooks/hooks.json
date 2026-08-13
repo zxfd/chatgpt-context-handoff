@@ -1,0 +1,18 @@
+{
+  "description": "Create one handoff when a desktop task reaches its context threshold.",
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${PLUGIN_ROOT}/scripts/context-handoff.js\"",
+            "commandWindows": "node \"%PLUGIN_ROOT%\\scripts\\context-handoff.js\"",
+            "timeout": 5,
+            "statusMessage": "Checking context budget"
+          }
+        ]
+      }
+    ]
+  }
+}

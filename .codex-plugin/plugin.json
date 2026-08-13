@@ -1,0 +1,26 @@
+{
+  "name": "chatgpt-context-handoff",
+  "version": "0.1.0",
+  "description": "Create a handoff before a ChatGPT/Codex desktop task outgrows its context budget.",
+  "author": {
+    "name": "gin",
+    "url": "https://github.com/zxfd"
+  },
+  "homepage": "https://github.com/zxfd/chatgpt-context-handoff",
+  "repository": "https://github.com/zxfd/chatgpt-context-handoff",
+  "license": "MIT",
+  "keywords": ["chatgpt", "codex", "hooks", "context", "handoff"],
+  "interface": {
+    "displayName": "Context Handoff",
+    "shortDescription": "Hand off long desktop tasks before context costs grow.",
+    "longDescription": "Monitors native ChatGPT/Codex task telemetry at Stop and requests one concise handoff when a configurable context threshold is reached.",
+    "developerName": "gin",
+    "category": "Productivity",
+    "capabilities": ["Lifecycle hooks", "Context monitoring"],
+    "websiteURL": "https://github.com/zxfd/chatgpt-context-handoff",
+    "defaultPrompt": [
+      "Show my Context Handoff configuration.",
+      "Set the handoff threshold to 200000 tokens."
+    ]
+  }
+}

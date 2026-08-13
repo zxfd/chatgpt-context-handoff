@@ -1,0 +1,6 @@
+{
+  "thresholdTokens": 250000,
+  "maxContextPercent": 85,
+  "newTaskMode": "manual",
+  "handoffFile": "交接文档.md"
+}
